@@ -1,5 +1,6 @@
 # use-solana-game-contract-io
 An interface for interoperating with the Solana program associated with a betting & gambling game platform which is yet unnamed.
+Currently a work in progress / unfinished.
 
 ### Full examples:
 [MariaDB](https://github.com/bigbizze/use-solana-game-contract-io/tree/master/examples/mariadb-example)
