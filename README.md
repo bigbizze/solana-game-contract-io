@@ -80,7 +80,7 @@ Create a new match and get an ID for it:
 const matchPubKey = await solanaGameServer.createMatch();
 ```
 
-Once a user has signed the txn to join the match using this match ID (matchPubKey) on the client, and has returned the user's public key, the user's public key for the token account & the public key of their token account for the match, add them to the data store
+Once a user has signed the txn to join the match using this match ID (matchPubKey) on the client, and has returned the user's public key, the public key for the user's token account for the relevant game token mint & the public key of a temporary token account for the match from the same mint, add them to the data store
 ```ts
 await solanaGameServer.addSignedUserToMatch(joinSuccessArgs.matchPubKey, { userPubKey, userTokenPubKey, userMatchTokenPubKey })
 ```
