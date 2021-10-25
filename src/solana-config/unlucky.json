@@ -1,0 +1,155 @@
+{
+  "version": "0.0.0",
+  "name": "unlucky",
+  "instructions": [
+    {
+      "name": "addUser",
+      "accounts": [
+        {
+          "name": "matchAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userAccount",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "fromUserTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "toTempUserTokenAccount",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "wagerAmount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "transferToken",
+      "accounts": [
+        {
+          "name": "matchAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "fromTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "toTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "programSigner",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "transferAmount",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "nonce",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "leave",
+      "accounts": [
+        {
+          "name": "matchAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "lamportRecipient",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "fromTempTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "toUserTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "programSigner",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u8"
+        }
+      ]
+    }
+  ]
+}
