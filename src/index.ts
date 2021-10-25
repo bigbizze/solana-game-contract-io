@@ -75,6 +75,18 @@ class SolanaGameServer implements UseSolanaGame {
   }
 
   /**
+   *  type UserItem = {
+   *    // user's public key
+   *    userPubKey: PublicKeyString;
+   *
+   *    // public Key of the user's personal account for the game's token's mint
+   *    userTokenPubKey: string;
+   *
+   *    // public key of the temporary match token account for the game's token's
+   *    // mint which the user's game tokens were transferred to
+   *    userMatchTokenPubKey: string;
+   *  };
+   *
    * @param matchPubKey (string) public key of the match to add signed user to
    * @param user (UserItem) public key of user & public key of user match token account
    */
@@ -87,6 +99,10 @@ class SolanaGameServer implements UseSolanaGame {
     }
   }
 
+  /**
+   * @param matchPubKey (string) public key of the match to add signed user to
+   * @param userPubKey (string) the user's public key
+   */
   async leaveGame(matchPubKey: PublicKeyString, userPubKey: PublicKeyString) {
     const match = await this.ioMethods.getMatch(matchPubKey);
     if (match instanceof Error) {
@@ -147,6 +163,10 @@ class SolanaGameServer implements UseSolanaGame {
     }
   }
 
+  /**
+   * @param matchPubKey (string) public key of the match to add signed user to
+   * @param winner (string) public key of the user who won the game
+   */
   async endGame(matchPubKey: PublicKeyString, winner: PublicKeyString) {
     const match = await this.ioMethods.getMatch(matchPubKey);
     if (match instanceof Error) {
