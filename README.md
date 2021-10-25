@@ -1,7 +1,13 @@
 # use-solana-game-contract-io
 An interface for interoperating with the Solana program associated with a betting & gambling game platform which is yet unnamed.
 
-Specify the path to the server's wallet keypair, as well as configuration for how to write & read persisted data about matches (in the future not specifying this will default to creating a sqlite file).
+### Full examples:
+[MariaDB](https://github.com/bigbizze/use-solana-game-contract-io/tree/master/examples/mariadb-example)
+
+[Redis](https://github.com/bigbizze/use-solana-game-contract-io/tree/master/examples/redis-example)
+
+### How to use
+Specify the path to the server's wallet keypair, as well as configuration for how to write & read persisted data about matches (in the future not specifying this will default to creating a sqlite file)
 ```ts
 export const solanaGameServer = createSolanaGameServer({
   pathToWalletKeyPair: `${ require("app-root-path").path }/kp.json`,
