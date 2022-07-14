@@ -1,7 +1,7 @@
 
 import { getFirstRow, with_db } from "./db/utils";
 import createSolanaGameServer, { MatchArgs, MatchRecord, UpdateMatchArgs, UserRecord } from "../../src";
-import { Result } from "../../src/shared-types";
+import { Result } from "../../src";
 
 export const solanaGameServer = createSolanaGameServer({
   pathToWalletKeyPair: `${ require("app-root-path").path }/kp.json`,
@@ -71,3 +71,4 @@ export const solanaGameServer = createSolanaGameServer({
     ));
   }
 });
+

@@ -1,6 +1,6 @@
 import asyncRedis from "async-redis";
-import { Option } from "../../src/shared-types";
-import { makeNewStringKeypair } from "../../src/utils/keypair";
+import { Option } from "../../src";
+import { makeNewStringKeypair } from "../../src";
 import promise_then_catch from "promise-then-catch/lib";
 import createSolanaGameServer, { Match, MatchArgs, MatchRecord, UpdateMatchArgs, UserRecord } from "../../src";
 

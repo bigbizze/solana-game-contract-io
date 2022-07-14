@@ -1,4 +1,5 @@
-import { genKeypair } from "../../../front/src/use-solana-game/exports";
+import { Keypair } from "@solana/web3.js";
+
 
 export type PublicKeyString = string;
 export type SecretKeyBase64 = string;
@@ -8,7 +9,7 @@ export type StringKeyPair = {
 };
 
 export const makeNewStringKeypair = (): StringKeyPair => {
-  const keyPair = genKeypair();
+  const keyPair = Keypair.generate();
   return {
     publicKey: keyPair.publicKey.toString(),
     secretKey: Buffer.from(keyPair.secretKey).toString("base64url")
