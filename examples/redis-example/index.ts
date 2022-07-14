@@ -1,14 +1,22 @@
-import asyncRedis from "async-redis";
-import { Option } from "../../src";
+import { Option, Result } from "../../src";
 import { makeNewStringKeypair } from "../../src";
 import promise_then_catch from "promise-then-catch/lib";
-import createSolanaGameServer, { Match, MatchArgs, MatchRecord, UpdateMatchArgs, UserRecord } from "../../src";
+import createSolanaGameServer, { Match, MatchArgs, MatchRecord, UpdateMatchArgs, UserRecord, asyncRedis } from "../../src";
 
 const redisClient = asyncRedis.createClient(
   process.env.REDIS_URL ? process.env.REDIS_URL : "redis://216.128.179.112:6379"
 );
 
+
+type MatchType =
+  "Connect4"
+  | "YankeesLose"
+  | "JoinLobbyConnect4";
+
+const matchTypes: MatchType[] = [ "Connect4", "YankeesLose", "JoinLobbyConnect4" ];
+
 const gameServer = createSolanaGameServer({
+  matchTypes,
   pathToWalletKeyPair: `${ require("app-root-path").path }/kp.json`,
   rpcConnection: "devnet"
 }, {
@@ -34,15 +42,29 @@ const gameServer = createSolanaGameServer({
       await redisClient.set(userRecord.matchPubKey, JSON.stringify(newMatch));
     }
   },
-  getMatchRecord: async ({ matchPubKey }: MatchArgs): Promise<Option<MatchRecord>> => {
+  getMatchRecordByPubKey: async ({ matchPubKey }: MatchArgs): Promise<Result<MatchRecord>> => {
     const matchRecord = await redisClient.get(matchPubKey);
-    if (matchRecord != null) {
-      const match = JSON.parse(matchRecord) as Match;
-      return {
-        matchPubKey: match.matchPubKey,
-        secretKey: match.secretKey
-      };
+    if (matchRecord == null) {
+      return new Error("couldn't get match record!");
     }
+    const match = JSON.parse(matchRecord) as Match;
+    return {
+      matchPubKey: match.matchPubKey,
+      secretKey: match.secretKey
+    };
+  },
+  getMatchRecordsByMatchType: async ({ matchType }: { matchType: MatchType }) => {
+    return null as any; // TODO
+    // return await with_db<Result<MatchRecord[]>>(async conn => {
+    //   const rows = await conn.query(`
+    //       SELECT * FROM solana.match
+    //       WHERE type = ?
+    //   `.trim(), [ matchType ]);
+    //   if (!Array.isArray(rows) || rows.length === 0) {
+    //     return new Error(`got no users for getMatchRecordsByMatchType`);
+    //   }
+    //   return rows;
+    // });
   },
   getUserRecords: async ({ matchPubKey }: MatchArgs): Promise<UserRecord[]> => {
     const matchRecord = await redisClient.get(matchPubKey);
@@ -55,10 +77,11 @@ const gameServer = createSolanaGameServer({
   removeMatch: async ({ matchPubKey }: MatchArgs): Promise<void> => {
     await redisClient.del(matchPubKey);
   }
-});
+}, "Connect4");
 
 const test_stuff = async () => {
-  const matchPubKey = await gameServer.createMatch();
+
+  const matchPubKey = await gameServer.createMatch(matchTypes[0]);
 
   // do stuff
 
