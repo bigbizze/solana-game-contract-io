@@ -6,8 +6,8 @@ import { BN } from "@project-serum/anchor";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { catchWrapper } from "./utils/general";
 import { LeaveArgs, TransferTokenArgs } from "./solana-config/contract_type";
-import { Option, Result } from "./shared-types";
-
+import { decrypt, encrypt } from "./utils/encrypt";
+import { Result } from "./shared-types";
 
 export interface MatchRecord {
   matchPubKey: PublicKeyString;
@@ -28,8 +28,9 @@ export interface Match extends MatchRecord {
   users: UserRecord[];
 }
 
-export type WriteMatchArgs = {
+export type WriteMatchArgs<M> = {
   matchPubKeyPair: StringKeyPair;
+  matchType: M
 };
 
 export type MatchArgs = {
@@ -43,69 +44,86 @@ export type UpdateMatchArgs = {
   removedUsers: UserItem[]
 };
 
-export interface UseSolanaGame {
-  createMatch(): Promise<PublicKeyString>;
+export type TransferUserArgs = {
+  type: "UserToken" | "UserMatchToken",
+  userPubKey: PublicKeyString
+};
+
+export type AvailableMatches<M> = { matchPubKeys: string[], matchType: M };
+
+export interface UseSolanaGame<M> {
+  createMatch(matchType: M): Promise<PublicKeyString>;
+
+  getAvailableMatches(matchType: M): Promise<AvailableMatches<M>>;
+
   addSignedUserToMatch(matchPubKey: PublicKeyString, user: UserItem): Promise<void>;
+
   leaveGame(matchPubKey: PublicKeyString, userPubKey: PublicKeyString): Promise<Result<string>>;
-  endGame(matchPubKey: PublicKeyString, winnerPubKey: PublicKeyString): Promise<Option<number>>;
+
+  transfer(matchPubKey: PublicKeyString, fromTokenAccPubKey: TransferUserArgs, toTokenAccPubKey: TransferUserArgs): Promise<void>;
+
+  transferAllToWinner(matchPubKey: PublicKeyString, winnerPubKey: PublicKeyString): Promise<void>;
 }
 
 
-export type SolanaGame = SolanaGameServer;
+// export type SolanaGame = SolanaGameServer;
 
-class SolanaGameServer implements UseSolanaGame {
-  ioMethods: ResolvedIOMethods;
+export class SolanaGameChainIo<M> implements UseSolanaGame<M> {
+  ioMethods: ResolvedIOMethods<M>;
 
-  constructor(ioMethods: ResolvedIOMethods) {
+  constructor(ioMethods: ResolvedIOMethods<M>) {
     this.ioMethods = ioMethods;
   }
 
-  get configJson() {
-    return getConfig().configJson;
+  static isValidPubKey(pubKey: string | PublicKey): boolean {
+    const _pubKey = typeof pubKey === "string" ? new PublicKey(decrypt(pubKey)) : pubKey;
+    return anchor.web3.PublicKey.isOnCurve(_pubKey.toBytes());
   }
 
   /**
    * @returns createMatchResult (CreateMatchResult)
    * public key of the match & method to call after user has signed transaction
    */
-  async createMatch() {
+  async createMatch(matchType: M) {
     const matchPubKeyPair = makeNewStringKeypair();
-    await this.ioMethods.writeMatchRecord({ matchPubKeyPair });
-    return matchPubKeyPair.publicKey;
+    await this.ioMethods.writeMatchRecord({ matchPubKeyPair, matchType });
+    return encrypt(matchPubKeyPair.publicKey);
+  }
+
+  async getAvailableMatches(matchType: M) {
+    const res = await this.ioMethods.getMatchRecordsByMatchType({ matchType });
+    if (res instanceof Error) {
+      throw res;
+    }
+    return res.reduce((obj, y) => ({
+      ...obj,
+      matchPubKeys: [
+        ...obj.matchPubKeys,
+        encrypt(y.matchPubKey)
+      ]
+    }), { matchPubKeys: [], matchType } as AvailableMatches<M>);
   }
 
   /**
-   *  type UserItem = {
-   *    // user's public key
-   *    userPubKey: PublicKeyString;
-   *
-   *    // public Key of the user's personal account for the game's token's mint
-   *    userTokenPubKey: string;
-   *
-   *    // public key of the temporary match token account for the game's token's
-   *    // mint which the user's game tokens were transferred to
-   *    userMatchTokenPubKey: string;
-   *  };
-   *
    * @param matchPubKey (string) public key of the match to add signed user to
    * @param user (UserItem) public key of user & public key of user match token account
    */
   async addSignedUserToMatch(matchPubKey: PublicKeyString, user: UserItem) {
-    if (await this.ioMethods.doesMatchExist(matchPubKey)) {
+    const _matchPubKey = decrypt(matchPubKey);
+    if (await this.ioMethods.doesMatchExist(_matchPubKey)) {
       await this.ioMethods.writeUserRecord({
         ...user,
-        matchPubKey,
+        matchPubKey: _matchPubKey
       });
     }
   }
 
-  /**
-   * @param matchPubKey (string) public key of the match to add signed user to
-   * @param userPubKey (string) the user's public key
-   */
   async leaveGame(matchPubKey: PublicKeyString, userPubKey: PublicKeyString) {
-    const match = await this.ioMethods.getMatch(matchPubKey);
+    const _matchPubKey = decrypt(matchPubKey);
+    const match = await this.ioMethods.getMatch(_matchPubKey);
     if (match instanceof Error) {
+      /** TODO: these need to be thrown to external callers so that we don't give people headaches
+       */
       return console.error(match);
     }
     if (!match.users.some(x => x.userPubKey === userPubKey)) {
@@ -116,36 +134,36 @@ class SolanaGameServer implements UseSolanaGame {
       user: user.userPubKey !== userPubKey ? obj.user : user
     }), { newUsers: [] } as { newUsers: UserRecord[], user?: UserItem });
     if (newUsers.length === 0) {
-      const endMatchResult = await this.ioMethods.removeMatch(matchPubKey);
+      const endMatchResult = await this.ioMethods.removeMatch(_matchPubKey);
       if (endMatchResult instanceof Error) {
         return console.error(endMatchResult);
       }
     } else {
       const newUsersArr = newUsers.map(x => x.userPubKey);
       await this.ioMethods.removeUserRecords({
-        matchPubKey,
+        matchPubKey: _matchPubKey,
         prevMatchState: match,
         newMatchState: {
-          matchPubKey,
+          matchPubKey: _matchPubKey,
           secretKey: match.secretKey,
           users: newUsers
         },
         removedUsers: match.users.filter(x => !newUsersArr.includes(x.userPubKey))
       });
     }
-    const solanaMatchPubKey = new PublicKey(matchPubKey);
+    const solanaMatchPubKey = new PublicKey(_matchPubKey);
     const solanaUserPubKey = new PublicKey(userPubKey);
     const solanaUserTokenPubKey = new PublicKey(user.userTokenPubKey);
     const solanaUserMatchTokenPubKey = new PublicKey(user.userMatchTokenPubKey);
     const config = getConfig();
     const [ pda, nonce ] = await anchor.web3.PublicKey.findProgramAddress(
       [ solanaMatchPubKey.toBuffer(), solanaUserPubKey.toBuffer() ],
-      config.programId
+      await config.programId()
     );
     const leaveArgs: LeaveArgs = {
       accounts: {
         matchAuthority: solanaMatchPubKey,
-        lamportRecipient: config.localWallet.payer.publicKey,
+        lamportRecipient: (await config.localWallet()).payer.publicKey,
         fromTempTokenAccount: solanaUserMatchTokenPubKey,
         toUserTokenAccount: solanaUserTokenPubKey,
         userAccount: solanaUserPubKey,
@@ -154,7 +172,7 @@ class SolanaGameServer implements UseSolanaGame {
       }
     };
     try {
-      const txn = await config.program.rpc.leave(new BN(nonce), leaveArgs);
+      const txn = await (await config.program()).rpc.leave(new BN(nonce), leaveArgs);
       console.log(txn);
       return txn;
     } catch (e) {
@@ -163,29 +181,87 @@ class SolanaGameServer implements UseSolanaGame {
     }
   }
 
-  /**
-   * @param matchPubKey (string) public key of the match to add signed user to
-   * @param winner (string) public key of the user who won the game
+  /** TODO: This needs an optional amount argument
    */
-  async endGame(matchPubKey: PublicKeyString, winner: PublicKeyString) {
-    const match = await this.ioMethods.getMatch(matchPubKey);
+  async transfer(matchPubKey: PublicKeyString, fromTokenAccPubKey: TransferUserArgs, toTokenAccPubKey: TransferUserArgs) {
+    const _matchPubKey = decrypt(matchPubKey);
+    const match = await this.ioMethods.getMatch(_matchPubKey);
+    if (match instanceof Error) {
+      console.error(match);
+      return;
+    } else if (!match.users.some(x => x.userPubKey === fromTokenAccPubKey.userPubKey) || !match.users.some(x => x.userPubKey === toTokenAccPubKey.userPubKey)) {
+      console.error("got a user in transfer which isn't in the match!");
+      return;
+    }
+    const filteredUsers = match.users
+      .filter(x => x.userPubKey === fromTokenAccPubKey.userPubKey || x.userPubKey === toTokenAccPubKey.userPubKey);
+    if (filteredUsers.length !== 2) {
+      console.error(`matched too many users for transfer! (this should never happen :\\)`);
+      return;
+    }
+    const orderedFilteredUsers = filteredUsers[0].userPubKey === fromTokenAccPubKey.userPubKey ? filteredUsers : [ filteredUsers[1], filteredUsers[0] ];
+    const [ fromToken, toToken ] = [
+      fromTokenAccPubKey.type === "UserMatchToken" ? orderedFilteredUsers[0].userMatchTokenPubKey : orderedFilteredUsers[0].userTokenPubKey,
+      toTokenAccPubKey.type === "UserMatchToken" ? orderedFilteredUsers[1].userMatchTokenPubKey : orderedFilteredUsers[1].userTokenPubKey
+    ];
+
+    // const { fromToken, toToken } = filteredUsers
+    //   .reduce((obj, y) => {
+    //     const isFrom = fromTokenAccPubKey.userPubKey === y.userPubKey;
+    //     const isMatchToken = (isFrom ? fromTokenAccPubKey : toTokenAccPubKey).type === "UserMatchToken";
+    //     const token = isMatchToken ? y.userMatchTokenPubKey : y.userTokenPubKey;
+    //     const res = isFrom ? { fromToken: token } : { toToken: token };
+    //     return {
+    //       ...obj,
+    //       ...res
+    //     };
+    //   }, { fromToken: "", toToken: "" });
+    const solanaMatchPubKey = new PublicKey(_matchPubKey);
+    const solanaUserPubKey = new PublicKey(orderedFilteredUsers[0].userPubKey);
+    const config = getConfig();
+    const [ pda, nonce ] = await anchor.web3.PublicKey.findProgramAddress(
+      [ solanaMatchPubKey.toBuffer(), solanaUserPubKey.toBuffer() ],
+      (await config.programId())
+    );
+    const transfer: TransferTokenArgs = {
+      accounts: {
+        fromTokenAccount: new PublicKey(fromToken),
+        toTokenAccount: new PublicKey(toToken),
+        matchAuthority: solanaMatchPubKey,
+        userAccount: solanaUserPubKey,
+        programSigner: pda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        mint: (await config.mintPubKey())
+      }
+    };
+    try {
+      const txn = await (await config.program()).rpc.transferToken(null, new BN(nonce), transfer);
+      console.log(`txn: ${ txn }`);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async transferAllToWinner(matchPubKey: PublicKeyString, winner: PublicKeyString) {
+    const _matchPubKey = decrypt(matchPubKey);
+    const match = await this.ioMethods.getMatch(_matchPubKey);
     if (match instanceof Error) {
       console.error(match);
       return;
     }
-    const solanaMatchPubKey = new PublicKey(matchPubKey);
+    const solanaMatchPubKey = new PublicKey(_matchPubKey);
     const solanaWinner = match.users.reduce((a, b) => a.userPubKey === winner ? a : b);
     const solanaWinnerTokenAccountPubKey = new PublicKey(solanaWinner.userTokenPubKey);
     const config = getConfig();
-    const balanceBefore = (await config.connection.getTokenAccountBalance(solanaWinnerTokenAccountPubKey)).value.uiAmount;
+    // const balanceBefore = (await (await config.connection()).getTokenAccountBalance(solanaWinnerTokenAccountPubKey)).value.uiAmount;
     const transfers = await Promise.all(match.users
       .filter(x => x.userPubKey !== winner)
-      .map(async (x): Promise<[number, TransferTokenArgs]> => {
+      .map(async (x): Promise<[ number, TransferTokenArgs ]> => {
         const [ pda, nonce ] = await anchor.web3.PublicKey.findProgramAddress(
           [ solanaMatchPubKey.toBuffer(), new PublicKey(x.userPubKey).toBuffer() ],
-          config.programId
+          (await config.programId())
         );
-        console.log(`PubKey: ${x.userPubKey} | PDA: ${pda} | Nonce: ${nonce}`);
+        console.log(`PubKey: ${ x.userPubKey } | PDA: ${ pda } | Nonce: ${ nonce }`);
         return [ nonce, {
           accounts: {
             fromTokenAccount: new PublicKey(x.userMatchTokenPubKey),
@@ -194,57 +270,61 @@ class SolanaGameServer implements UseSolanaGame {
             userAccount: new PublicKey(x.userPubKey),
             programSigner: pda,
             tokenProgram: TOKEN_PROGRAM_ID,
-            mint: config.mintPubKey
+            mint: (await config.mintPubKey())
           }
-        }];
+        } ];
       }));
     for (const [ nonce, transfer ] of transfers) {
       try {
-        const txn = await config.program.rpc.transferToken(null, new BN(nonce), transfer);
-        console.log(`txn: ${txn}`);
+        const txn = await (await config.program()).rpc.transferToken(null, new BN(nonce), transfer);
+        console.log(`txn: ${ txn }`);
       } catch (e) {
         console.error(e);
       }
     }
-    const balanceAfter = (await config.connection.getTokenAccountBalance(solanaWinnerTokenAccountPubKey, "confirmed")).value.uiAmount;
-    return (balanceAfter != null ? balanceAfter : 0) - (balanceBefore != null ? balanceBefore : 0);
+    // const balanceAfter = (await (await config.connection()).getTokenAccountBalance(solanaWinnerTokenAccountPubKey, "confirmed")).value.uiAmount;
+    // return (balanceAfter != null ? balanceAfter : 0) - (balanceBefore != null ? balanceBefore : 0);
   }
 }
 
 export type RpcConnection = Cluster | string;
 
-export interface SolanaGameServerConfig {
+export interface SolanaGameServerConfig<M> {
   pathToWalletKeyPair: string;
-  rpcConnection: RpcConnection
+  rpcConnection: RpcConnection;
+  matchTypes: M[];
 }
 
-interface SolanaGameServerIOMethods {
-  writeMatchRecord: ({ matchPubKeyPair }: WriteMatchArgs) => Promise<void>;
+interface SolanaGameServerIOMethods<M> {
+  writeMatchRecord: ({ matchPubKeyPair }: WriteMatchArgs<M>) => Promise<void>;
   writeUserRecord: ({ matchPubKey, userPubKey, userMatchTokenPubKey }: UserRecord) => Promise<void>;
-  getMatchRecord: ({ matchPubKey }: MatchArgs) => Promise<Result<MatchRecord>>;
+  getMatchRecordByPubKey: ({ matchPubKey }: MatchArgs) => Promise<Result<MatchRecord>>;
+  getMatchRecordsByMatchType: ({ matchType }: { matchType: M }) => Promise<Result<MatchRecord[]>>;
   getUserRecords: ({ matchPubKey }: MatchArgs) => Promise<Result<UserRecord[]>>;
   removeUserRecords: ({ prevMatchState, newMatchState, matchPubKey, removedUsers }: UpdateMatchArgs) => Promise<void>;
   removeMatch: ({ matchPubKey }: MatchArgs) => Promise<void>;
 }
 
-interface ResolvedIOMethods extends Omit<SolanaGameServerIOMethods, "getMatch" | "removeMatch" | "writeMatchRecord" | "updateMatch"> {
-  writeMatchRecord: (args: WriteMatchArgs) => Promise<void>
+interface ResolvedIOMethods<M> extends Omit<SolanaGameServerIOMethods<M>, "getMatch" | "removeMatch" | "writeMatchRecord" | "updateMatch"> {
+  writeMatchRecord: (args: WriteMatchArgs<M>) => Promise<void>;
   getMatch: (matchPubKey: PublicKeyString) => Promise<Result<Match>>;
+  getMatchesByType: (matchType: M) => Promise<Result<MatchRecord[]>>;
   removeMatch: (matchPubKey: PublicKeyString) => Promise<Result<void>>;
   removeUserRecords: ({ prevMatchState, newMatchState }: UpdateMatchArgs) => Promise<void>;
   doesMatchExist: (matchPubKey: PublicKeyString) => Promise<boolean>;
 }
 
-const createSolanaGameServer = (
-  config: SolanaGameServerConfig,
-  ioMethods: SolanaGameServerIOMethods
-): SolanaGame => {
-  loadConfig(config);
-  return new SolanaGameServer({
+const createSolanaGameServer = <M>(
+  config: SolanaGameServerConfig<M>,
+  ioMethods: SolanaGameServerIOMethods<typeof config["matchTypes"][number]>,
+  passKey: string
+): SolanaGameChainIo<typeof config["matchTypes"][number]> => {
+  loadConfig(passKey, config);
+  return new SolanaGameChainIo({
     ...ioMethods,
     async doesMatchExist(matchPubKey) {
       const matchResult = await catchWrapper(async () => (
-        await ioMethods.getMatchRecord({ matchPubKey })
+        await ioMethods.getMatchRecordByPubKey({ matchPubKey })
       ));
       if (matchResult instanceof Error) {
         console.log(matchResult);
@@ -268,10 +348,19 @@ const createSolanaGameServer = (
         console.error(updateResult);
       }
     },
+    async getMatchesByType(matchType) {
+      const matchesResult = await catchWrapper(async () =>
+        await ioMethods.getMatchRecordsByMatchType({ matchType })
+      );
+      if (matchesResult instanceof Error) {
+        return matchesResult;
+      }
+      return matchesResult;
+    },
     async getMatch(matchPubKey) {
       return await catchWrapper(async () => {
         const matchRecord = await catchWrapper(async () => (
-          await ioMethods.getMatchRecord({ matchPubKey })
+          await ioMethods.getMatchRecordByPubKey({ matchPubKey })
         ));
         if (matchRecord instanceof Error) {
           return matchRecord;
@@ -292,11 +381,12 @@ const createSolanaGameServer = (
       return await catchWrapper(async () =>
         await ioMethods.removeMatch({ matchPubKey })
       );
-    },
+    }
   });
 };
 
 export default createSolanaGameServer;
+
 
 
 
