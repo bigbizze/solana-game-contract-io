@@ -1,19 +1,23 @@
-import * as idl from "./unlucky.json";
-import * as program_info from "./program_info.json";
+// import * as idl from "./unlucky.json";
+// import * as program_info from "./program_info.json";
 import { Program } from "./contract_type";
 import * as anchor from "@project-serum/anchor";
 import { Provider } from "@project-serum/anchor";
 import { Cluster, clusterApiUrl, Connection, PublicKey } from "@solana/web3.js";
 import { NodeWallet } from "@project-serum/anchor/dist/cjs/provider";
-import { isTypeOne } from "../utils/general";
-import { RpcConnection, SolanaGameServerConfig } from "../index";
+import { isTypeOne, sleep } from "../utils/general";
+import fetch from "node-fetch";
+import { loadEncrypt } from "../utils/encrypt";
+import { RpcConnection, SolanaGameServerConfig } from "../solana-game-contract-io";
 
-type IdlType = typeof idl;
-type ProgramInfoType = typeof program_info;
+type ProgramInfoType = {
+  programId: string;
+  mintKey: string
+};
 
 // tslint:disable-next-line:no-unused-expression
 export interface ConfigJson extends ProgramInfoType {
-  idl: IdlType
+  idl: any;
 }
 
 const clusterKinds: string[] = [ 'devnet', 'testnet', 'mainnet-beta' ];
@@ -25,11 +29,43 @@ const getConnection = (rpcConnection: RpcConnection) => {
   }
 };
 
-class MakeConfig {
+let configJson: ConfigJson | null = null;
+
+async function reqSpec(attempts = 0): Promise<ConfigJson> {
+  try {
+    const res = await fetch("https://raw.githubusercontent.com/bigbizze/solana-gamble-game-config/master/solana-gamble-game-config.json"); // TODO: parameterize this
+    if (res.ok) {
+      return JSON.parse(await res.text());
+    }
+  } catch (e) {
+    if (attempts > 15) {
+      throw e;
+    }
+    await new Promise(r => setTimeout(r, 1000 * (attempts + 1)));
+    return await this.reqSpec(attempts + 1);
+  }
+}
+
+reqSpec()
+  .then(res => configJson = res)
+  .catch(e => console.error(e));
+
+class MakeConfig<M> {
   ["_mintKey"]: PublicKey;
   ["_wallet"]: NodeWallet;
   ["_rpcConnection"]: string;
-  constructor(config: SolanaGameServerConfig) {
+  ["_programId"]: PublicKey;
+  ["_provider"]: Provider;
+  ["_connection"]: Connection;
+  ["_program"]: Program;
+  ["_configJson"]: ConfigJson;
+
+  constructor(config: SolanaGameServerConfig<M>) {
+    this.buildConfig(config)
+      .catch(e => console.log(e));
+  }
+
+  async buildConfig(config: SolanaGameServerConfig<M>) {
     this._rpcConnection = config.rpcConnection;
     process.env.ANCHOR_WALLET = config.pathToWalletKeyPair;
     this._wallet = NodeWallet.local();
@@ -40,62 +76,68 @@ class MakeConfig {
       { commitment: "processed" }
     );
     anchor.setProvider(this._provider);
-    this._programId = new PublicKey(program_info.programId);
-    this._mintKey = new PublicKey(program_info.mintKey);
+    await this._waitForConfig();
+    const { idl, programId, mintKey } = configJson;
+    this._programId = new PublicKey(programId);
+    this._mintKey = new PublicKey(mintKey);
     this._configJson = {
       idl,
-      programId: program_info.programId,
-      mintKey: program_info.mintKey
+      programId,
+      mintKey
     };
     // @ts-ignore
     this._program = new anchor.Program(idl, this._programId) as unknown as Program;
   }
 
-  ["_programId"]: PublicKey;
+  async ["_waitForConfig"]() {
+    while (configJson === null) {
+      await sleep(200);
+    }
+  }
 
-  get programId(): PublicKey {
+  async programId(): Promise<PublicKey> {
+    await this._waitForConfig();
     return new PublicKey(this._programId);
   }
 
-  ["_provider"]: Provider;
-
-  get provider(): Provider {
+  async provider(): Promise<Provider> {
+    await this._waitForConfig();
     return this._provider;
   }
 
-  ["_connection"]: Connection;
-
-  get connection(): Connection {
+  async connection(): Promise<Connection> {
+    await this._waitForConfig();
     return this._connection;
   }
 
-  ["_program"]: Program;
-
-  get program(): Program {
+  async program(): Promise<Program> {
+    await this._waitForConfig();
     return this._program;
   }
 
-  ["_configJson"]: ConfigJson;
-
-  get configJson(): ConfigJson {
+  async configJson(): Promise<ConfigJson> {
+    await this._waitForConfig();
     return this._configJson;
   }
 
-  get localWallet(): NodeWallet {
+  async localWallet(): Promise<NodeWallet> {
+    await this._waitForConfig();
     return this._wallet;
   }
 
-  get mintPubKey(): PublicKey {
+  async mintPubKey(): Promise<PublicKey> {
+    await this._waitForConfig();
     return new PublicKey(this._mintKey);
   }
 }
 
-export let config: MakeConfig | null = null;
+export let config: MakeConfig<any> | null = null;
 
-export const getConfig = (config2?: SolanaGameServerConfig) => {
+export const getConfig = <M>(gamePassword?: string, config2?: SolanaGameServerConfig<M>) => {
   if (config !== null) {
     return config;
-  } else if (config2 != null) {
+  } else if (config2 != null && gamePassword != null) {
+    loadEncrypt(gamePassword);
     config = new MakeConfig(config2);
     return config;
   }
