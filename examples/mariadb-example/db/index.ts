@@ -1,11 +1,10 @@
 import mariadb, { PoolConnection } from "mariadb";
 import config from "../config.json";
-
-const timezone = new Date().toString().split(" ").reduce((a, b) => a.includes("-") || a.includes("+") ? a : b);
+import mysqlTz from "mysql-tz";
 
 const maria_pool = mariadb.createPool({
   ...config,
-  timezone,
+  timezone: mysqlTz(),
   connectionLimit: 25
 });
 
