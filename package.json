@@ -1,5 +1,5 @@
 {
-  "name": "use-solana-game",
+  "name": "solana-game-contract-io",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -10,7 +10,9 @@
     "@types/async-redis": "^1.1.2",
     "app-root-path": "^3.0.0",
     "async-redis": "^2.0.0",
+    "cryptr": "^6.0.3",
     "mariadb": "^2.5.5",
+    "mysql-tz": "^0.0.3",
     "patch-package": "^6.4.7",
     "promise-then-catch": "^0.0.1"
   },
