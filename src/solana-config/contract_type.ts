@@ -1,5 +1,5 @@
-import { BN, Coder } from "@project-serum/anchor";
 import * as anchor from "@project-serum/anchor";
+import { BN, Coder } from "@project-serum/anchor";
 import { Keypair, PublicKey } from "@solana/web3.js";
 
 export type Signers = Keypair[];
@@ -48,11 +48,13 @@ export type LeaveArgs = {
   signers?: Signers,
   remaining_accounts?: RemainingAccounts
 };
+
 export interface RpcNamespace {
   addUser: (wagerAmount: BN, named_args: AddUserArgs) => Promise<string>;
   transferToken: (transferAmount: BN | null, nonce: BN, named_args: TransferTokenArgs) => Promise<string>;
   leave: (nonce: BN, named_args: LeaveArgs) => Promise<string>;
 }
+
 export declare class Program implements anchor.Program {
   // @ts-ignore
   readonly rpc: RpcNamespace;

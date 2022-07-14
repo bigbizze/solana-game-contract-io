@@ -1,6 +1,6 @@
 import db_conn from "./index";
 import { Connection } from "mariadb";
-import { Option } from "../../../src/shared-types";
+import { Option } from "../../../src";
 
 export const with_db = async <T>(handler_cb: (conn: Connection) => Promise<T>, _conn?: Connection): Promise<Option<T>> => {
   const conn = _conn == null ? await db_conn() : _conn;
