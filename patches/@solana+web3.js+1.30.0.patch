@@ -1,0 +1,11 @@
+diff --git a/node_modules/@solana/web3.js/lib/index.d.ts b/node_modules/@solana/web3.js/lib/index.d.ts
+index 07e7d35..08a7867 100644
+--- a/node_modules/@solana/web3.js/lib/index.d.ts
++++ b/node_modules/@solana/web3.js/lib/index.d.ts
+@@ -1,4 +1,6 @@
+ /// <reference types="node" />
++// @ts-ignore
++
+ declare module '@solana/web3.js' {
+   import {Buffer} from 'buffer';
+ 

@@ -5,7 +5,8 @@ import { Result } from "../../src";
 
 export const solanaGameServer = createSolanaGameServer({
   pathToWalletKeyPair: `${ require("app-root-path").path }/kp.json`,
-  rpcConnection: "devnet"
+  rpcConnection: "devnet",
+  matchTypes: ["hello"]
 }, {
   writeMatchRecord: async ({ matchPubKeyPair: { publicKey, secretKey } }) => {
     await with_db(conn => (
@@ -23,7 +24,7 @@ export const solanaGameServer = createSolanaGameServer({
       `.trim(), [ userRecord.matchPubKey, userRecord.userPubKey, userRecord.userTokenPubKey, userRecord.userMatchTokenPubKey ])
     ));
   },
-  getMatchRecord: async ({ matchPubKey }: MatchArgs): Promise<Result<MatchRecord>> => {
+  getMatchRecordByPubKey: async ({ matchPubKey }: MatchArgs): Promise<Result<MatchRecord>> => {
     const match = await with_db(async conn => {
       const rows = await conn.query(`
         SELECT * FROM solana.match
@@ -39,6 +40,9 @@ export const solanaGameServer = createSolanaGameServer({
       matchPubKey: match.matchPubKey,
       secretKey: match.secretKey
     };
+  },
+  getMatchRecordsByMatchType: async () => {
+    return null as any // TODO
   },
   getUserRecords: async ({ matchPubKey }: MatchArgs): Promise<Result<UserRecord[]>> => {
     const users = await with_db<UserRecord[]>(async conn => (
@@ -70,5 +74,5 @@ export const solanaGameServer = createSolanaGameServer({
       `.trim(), [ matchPubKey ])
     ));
   }
-});
+}, "my-sweet-game");
 
